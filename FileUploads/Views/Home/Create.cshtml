@@ -1,0 +1,144 @@
+﻿@model FileUploads.Models.fileupload
+@{
+    ViewBag.Title = "Create";
+}
+
+<h2>Create</h2>
+
+<div class="form-horizontal">
+    <h4>File Upload</h4>
+    <hr />
+    @Html.ValidationSummary(true, "", new { @class = "text-danger" })
+    <div class="form-group">
+        @Html.LabelFor(model => model.filename, htmlAttributes: new { @class = "control-label col-md-2" })
+        <div class="col-md-10">
+            @Html.EditorFor(model => model.filename, new { htmlAttributes = new { @class = "form-control" } })
+            @Html.ValidationMessageFor(model => model.filename, "", new { @class = "text-danger" })
+        </div>
+    </div>
+    <div class="form-group">
+        @Html.LabelFor(model => model.file_path, htmlAttributes: new { @class = "control-label col-md-2" })
+        <div class="col-md-10">
+            <input type="file" id="fileInput" name="ImageFile" required />
+        </div>
+    </div>
+    <div class="form-group">
+        <div class="col-md-offset-2 col-md-10">
+            <input type="button" value="Upload" class="btn btn-default" onclick="uploadFile()" />
+        </div>
+    </div>
+    <div class="form-group">
+        <div class="col-md-offset-2 col-md-10">
+            <div id="progress"></div>
+        </div>
+    </div>
+</div>
+
+<div>
+    @Html.ActionLink("Back to List", "Index")
+</div>
+
+@section Scripts {
+    <script src="~/Scripts/jquery.validate.min.js"></script>
+    <script src="~/Scripts/jquery.validate.unobtrusive.min.js"></script>
+    <script>
+        function uploadFile() {
+            var fileInput = document.getElementById('fileInput');
+            var file = fileInput.files[0];
+            if (file) {
+                upload(file);
+            } else {
+                console.log('No file selected');
+            }
+        }
+
+        function upload(file) {
+            var BYTES_PER_CHUNK = 1024 * 1024; // 1MB chunks
+            var SIZE = file.size;
+            var start = 0;
+            var end = BYTES_PER_CHUNK;
+            var completed = 0;
+            var count = Math.ceil(SIZE / BYTES_PER_CHUNK);
+            var fileId = generateUUID();
+
+            function uploadNextChunk() {
+                if (start < SIZE) {
+                    var chunk = file.slice(start, end);
+                    var formData = new FormData();
+                    formData.append('chunk', chunk, file.name);
+                    formData.append('chunkIndex', completed);
+                    formData.append('totalChunks', count);
+                    formData.append('fileName', file.name);
+                    formData.append('fileId', fileId);
+
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST", '@Url.Action("MultiUpload", "Home")', true);
+
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            var response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                completed++;
+                                var progress = Math.round((completed / count) * 100);
+                                document.getElementById('progress').innerHTML = 'Progress: ' + progress + '%';
+                                if (completed === count) {
+                                    uploadComplete(file.name, fileId);
+                                } else {
+                                    start = end;
+                                    end = Math.min(start + BYTES_PER_CHUNK, SIZE);
+                                    uploadNextChunk();
+                                }
+                            } else {
+                                console.error('Chunk upload failed:', response.message);
+                            }
+                        } else {
+                            console.error('Chunk upload failed:', xhr.statusText);
+                        }
+                    };
+
+                    xhr.onerror = function() {
+                        console.error('Chunk upload failed:', xhr.statusText);
+                    };
+
+                    xhr.send(formData);
+                }
+            }
+
+            uploadNextChunk();
+        }
+
+        function uploadComplete(fileName, fileId) {
+            var formData = new FormData();
+            formData.append('fileName', fileName);
+            formData.append('fileId', fileId);
+            formData.append('completed', true);
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", '@Url.Action("UploadComplete", "Home")', true);
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    var response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        console.log('Upload completed successfully');
+                        document.getElementById('progress').innerHTML = 'Upload completed successfully';
+                        window.location.href = '@Url.Action("Index", "Home")';
+                    } else {
+                        console.error('Upload completion failed:', response.message);
+                        document.getElementById('progress').innerHTML = 'Upload completion failed: ' + response.message;
+                    }
+                } else {
+                    console.error('Upload completion failed:', xhr.statusText);
+                    document.getElementById('progress').innerHTML = 'Upload completion failed: ' + xhr.statusText;
+                }
+            };
+            xhr.send(formData);
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    </script>
+}
